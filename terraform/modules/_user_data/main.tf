@@ -1,7 +1,7 @@
 
 locals {
   int_linux_default_user_data = var.create && var.platform == "linux" && (var.enable_bootstrap_user_data || var.user_data_template_path != "") ? base64encode(templatefile(
-    coalesce(var.user_data_template_path, "${path.module}/../../templates/linux_user_data.tpl"),
+    coalesce(var.user_data_template_path, "${path.module}/../terraform-aws-eks/templates/linux_user_data.tpl"),
     {
       # https://docs.aws.amazon.com/eks/latest/userguide/launch-templates.html#launch-template-custom-ami
       enable_bootstrap_user_data = var.enable_bootstrap_user_data
@@ -19,7 +19,7 @@ locals {
   platform = {
     bottlerocket = {
       user_data = var.create && var.platform == "bottlerocket" && (var.enable_bootstrap_user_data || var.user_data_template_path != "" || var.bootstrap_extra_args != "") ? base64encode(templatefile(
-        coalesce(var.user_data_template_path, "${path.module}/../../templates/bottlerocket_user_data.tpl"),
+        coalesce(var.user_data_template_path, "${path.module}/../terraform-aws-eks/templates/bottlerocket_user_data.tpl"),
         {
           # https://docs.aws.amazon.com/eks/latest/userguide/launch-templates.html#launch-template-custom-ami
           enable_bootstrap_user_data = var.enable_bootstrap_user_data
@@ -39,7 +39,7 @@ locals {
     }
     windows = {
       user_data = var.create && var.platform == "windows" && var.enable_bootstrap_user_data ? base64encode(templatefile(
-        coalesce(var.user_data_template_path, "${path.module}/../../templates/windows_user_data.tpl"),
+        coalesce(var.user_data_template_path, "${path.module}/../terraform-aws-eks/templates/windows_user_data.tpl"),
         {
           # Required to bootstrap node
           cluster_name        = var.cluster_name

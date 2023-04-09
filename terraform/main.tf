@@ -117,51 +117,6 @@ module "eks" {
     }
   }
 
-  # EKS Managed Node Group(s)
-  eks_managed_node_group_defaults = {
-    ami_type       = "AL2_x86_64"
-    instance_types = ["m6i.large", "m5.large", "m5n.large", "m5zn.large"]
-
-    attach_cluster_primary_security_group = true
-    vpc_security_group_ids                = [aws_security_group.additional.id]
-    iam_role_additional_policies = {
-      additional = aws_iam_policy.additional.arn
-    }
-  }
-
-  eks_managed_node_groups = {
-    blue = {}
-    green = {
-      min_size     = 1
-      max_size     = 10
-      desired_size = 1
-
-      instance_types = ["t3.large"]
-      capacity_type  = "SPOT"
-      labels = {
-        Environment = "test"
-        GithubRepo  = "terraform-aws-eks"
-        GithubOrg   = "terraform-aws-modules"
-      }
-
-      taints = {
-        dedicated = {
-          key    = "dedicated"
-          value  = "gpuGroup"
-          effect = "NO_SCHEDULE"
-        }
-      }
-
-      update_config = {
-        max_unavailable_percentage = 33 # or set `max_unavailable`
-      }
-
-      tags = {
-        ExtraTag = "example"
-      }
-    }
-  }
-
   # Create a new cluster where both an identity provider and Fargate profile is created
   # will result in conflicts since only one can take place at a time
   # # OIDC Identity provider
@@ -174,25 +129,56 @@ module "eks" {
   # aws-auth configmap
   manage_aws_auth_configmap = true
 
-  aws_auth_users = [
-    {
-      userarn  = "arn:aws:iam::66666666666:user/user1"
-      username = "user1"
-      groups   = ["system:masters"]
-    },
-    {
-      userarn  = "arn:aws:iam::66666666666:user/user2"
-      username = "user2"
-      groups   = ["system:masters"]
-    },
+  aws_auth_node_iam_role_arns_non_windows = [
+    module.eks_managed_node_group.iam_role_arn,
   ]
 
-  aws_auth_accounts = [
-    "777777777777",
-    "888888888888",
+  aws_auth_roles = [
+    {
+      rolearn  = module.eks_managed_node_group.iam_role_arn
+      username = "system:node:{{EC2PrivateDNSName}}"
+      groups = [
+        "system:bootstrappers",
+        "system:nodes",
+      ]
+    }
   ]
 
   tags = local.tags
+}
+
+################################################################################
+# Sub-Module Usage on Existing/Separate Cluster
+################################################################################
+
+module "eks_managed_node_group" {
+  source = "./modules/eks-managed-node-group"
+
+  name            = "separate-eks-mng"
+  cluster_name    = module.eks.cluster_name
+  cluster_version = module.eks.cluster_version
+
+  subnet_ids                        = module.vpc.private_subnets
+  cluster_primary_security_group_id = module.eks.cluster_primary_security_group_id
+  vpc_security_group_ids = [
+    module.eks.cluster_security_group_id,
+  ]
+
+  ami_type = "BOTTLEROCKET_x86_64"
+  platform = "bottlerocket"
+
+  # this will get added to what AWS provides
+  bootstrap_extra_args = <<-EOT
+    # extra args added
+    [settings.kernel]
+    lockdown = "integrity"
+
+    [settings.kubernetes.node-labels]
+    "label1" = "foo"
+    "label2" = "bar"
+  EOT
+
+  tags = merge(local.tags, { Separate = "eks-managed-node-group" })
 }
 
 ################################################################################
