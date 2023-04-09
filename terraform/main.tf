@@ -19,7 +19,7 @@ data "aws_caller_identity" "current" {}
 
 locals {
   name   = "ex-${replace(basename(path.cwd), "_", "-")}"
-  region = "eu-west-1"
+  region = "us-east-1"
 
   vpc_cidr = "10.0.0.0/16"
   azs      = slice(data.aws_availability_zones.available.names, 0, 3)
@@ -40,6 +40,7 @@ module "eks" {
 
   cluster_name                   = local.name
   cluster_endpoint_public_access = true
+  cluster_endpoint_public_access_cidrs = ["${var.eks_endpoint_ip}/32"]
 
   cluster_addons = {
     coredns = {
@@ -116,44 +117,6 @@ module "eks" {
     }
   }
 
-  # Self Managed Node Group(s)
-  self_managed_node_group_defaults = {
-    vpc_security_group_ids = [aws_security_group.additional.id]
-    iam_role_additional_policies = {
-      additional = aws_iam_policy.additional.arn
-    }
-
-    instance_refresh = {
-      strategy = "Rolling"
-      preferences = {
-        min_healthy_percentage = 66
-      }
-    }
-  }
-
-  self_managed_node_groups = {
-    spot = {
-      instance_type = "m5.large"
-      instance_market_options = {
-        market_type = "spot"
-      }
-
-      pre_bootstrap_user_data = <<-EOT
-        echo "foo"
-        export FOO=bar
-      EOT
-
-      bootstrap_extra_args = "--kubelet-extra-args '--node-labels=node.kubernetes.io/lifecycle=spot'"
-
-      post_bootstrap_user_data = <<-EOT
-        cd /tmp
-        sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
-        sudo systemctl enable amazon-ssm-agent
-        sudo systemctl start amazon-ssm-agent
-      EOT
-    }
-  }
-
   # EKS Managed Node Group(s)
   eks_managed_node_group_defaults = {
     ami_type       = "AL2_x86_64"
@@ -211,30 +174,6 @@ module "eks" {
   # aws-auth configmap
   manage_aws_auth_configmap = true
 
-  aws_auth_node_iam_role_arns_non_windows = [
-    module.eks_managed_node_group.iam_role_arn,
-    module.self_managed_node_group.iam_role_arn,
-  ]
-
-  aws_auth_roles = [
-    {
-      rolearn  = module.eks_managed_node_group.iam_role_arn
-      username = "system:node:{{EC2PrivateDNSName}}"
-      groups = [
-        "system:bootstrappers",
-        "system:nodes",
-      ]
-    },
-    {
-      rolearn  = module.self_managed_node_group.iam_role_arn
-      username = "system:node:{{EC2PrivateDNSName}}"
-      groups = [
-        "system:bootstrappers",
-        "system:nodes",
-      ]
-    }
-  ]
-
   aws_auth_users = [
     {
       userarn  = "arn:aws:iam::66666666666:user/user1"
@@ -254,40 +193,6 @@ module "eks" {
   ]
 
   tags = local.tags
-}
-
-################################################################################
-# Sub-Module Usage on Existing/Separate Cluster
-################################################################################
-
-module "eks_managed_node_group" {
-  source = "./modules/eks-managed-node-group"
-
-  name            = "separate-eks-mng"
-  cluster_name    = module.eks.cluster_name
-  cluster_version = module.eks.cluster_version
-
-  subnet_ids                        = module.vpc.private_subnets
-  cluster_primary_security_group_id = module.eks.cluster_primary_security_group_id
-  vpc_security_group_ids = [
-    module.eks.cluster_security_group_id,
-  ]
-
-  ami_type = "BOTTLEROCKET_x86_64"
-  platform = "bottlerocket"
-
-  # this will get added to what AWS provides
-  bootstrap_extra_args = <<-EOT
-    # extra args added
-    [settings.kernel]
-    lockdown = "integrity"
-
-    [settings.kubernetes.node-labels]
-    "label1" = "foo"
-    "label2" = "bar"
-  EOT
-
-  tags = merge(local.tags, { Separate = "eks-managed-node-group" })
 }
 
 ################################################################################
