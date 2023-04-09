@@ -7,5 +7,5 @@ Replace MY.IP.ADDRESS with the IP address you are using to connec to the EKS clu
 ```
 terraform init
 terraform plan
-terraform apply -var="eks_endpoint_cidr=MY.IP.ADDRESS"
+terraform apply -var="eks_endpoint_ip=MY.IP.ADDRESS"
 ```
